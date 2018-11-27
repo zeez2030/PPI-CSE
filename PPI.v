@@ -9,7 +9,7 @@ module PPI(PA,PB,PC,rdb,a0,a1,wrb,data,reset);
 		
 		//address bus
 		
-		wire [2:0] address;
+		wire [1:0] address;
 		
 		assign address = {a1,a0};
 		
@@ -54,7 +54,7 @@ module PPI(PA,PB,PC,rdb,a0,a1,wrb,data,reset);
 			else
 			//rising edge of wrb
 			begin
-				if(address == 3'b011)
+				if(address == 2'b11)
 				begin
 					CWR[7:0] <= data[7:0];
 				end
@@ -144,23 +144,23 @@ module PPI(PA,PB,PC,rdb,a0,a1,wrb,data,reset);
 						if (CWR[6:5] == 2'b00)
 							begin
 								// this is mode 0
-								if (~CWR[4])
+								if (~CWR[3])
 									portCenable [7:4] = 4'hf; // port C upper
 								// is output
 								else
 									portCenable [7:4] = 4'h0; // port C upper
 								// is input
-								if (~CWR[3])
+								if (~CWR[0])
 									portCenable [3:0] = 4'hf; // port C lower
 								// is output
 								else
 									portCenable [3:0] = 4'h0; // port C lower
 								// is input
-								if (~CWR[2])
+								if (~CWR[1])
 									portBenable = 1; // port B is output
 								else
 									portBenable = 0; // port B is input
-								if (~CWR[1])
+								if (~CWR[4])
 									portAenable = 1; // port C is output
 								else
 									portAenable = 0; // port C is input
@@ -209,3 +209,153 @@ module PPI(PA,PB,PC,rdb,a0,a1,wrb,data,reset);
 				end
 	endmodule
 	
+	
+	
+	
+	module ppi_tb();
+			wire [7:0] tb_portA, tb_portB, tb_portC;
+		reg tb_rdb, tb_wrb, tb_reset;
+		wire [7:0] tb_data;
+		wire tb_a2, tb_a1, tb_a0;
+		reg [7:0] drive_portA, drive_portB, drive_portC,
+		drive_data, temp_data;
+		parameter cycle = 100;
+		assign tb_portA = drive_portA;
+		assign tb_portB = drive_portB;
+		assign tb_portC = drive_portC;
+		assign tb_data = drive_data;
+		reg [1:0] address;
+		assign tb_a1 = address [1];
+		assign tb_a0 = address [0];
+		initial
+			begin
+				$monitor("portA = %b  portb=%b  port=%b  cupper=%b  clower=%b" , A.PA ,A.PB ,A.PC,A.PC[7:4],A.PC[3:0] );
+				// for reset
+				drive_portA = 8'hzz;
+				drive_portB = 8'hzz;
+				drive_portC = 8'hzz;
+				tb_rdb = 1;
+				tb_wrb = 1;
+				address = 0;
+				drive_data = 8'hzz;
+				tb_reset = 0;
+				#cycle;
+				task_reset;
+				// testing for mode 0 with all portA, portB,
+				// portCU, portCL
+				// input
+				temp_data = 8'b10011011;
+				CWR_write(temp_data);
+				drive_data = 8'hzz;
+				// read from portA
+				address = 0;
+				drive_portA = 8'ha5;
+				read_port;
+				drive_portA = 8'hzz;
+				// read portB
+				address = 1;
+				drive_portB = 8'h35;
+				read_port;
+				drive_portB = 8'hzz;
+				// read portC
+				address = 2;
+				drive_portC = 8'h98;
+				read_port;
+				drive_portC = 8'hzz;
+				// change portC upper to output
+				temp_data = 8'b10010011;
+				CWR_write(temp_data);
+				drive_data = 8'hzz;
+				// write to portCupper
+				address = 2;
+				drive_data = 8'h11;
+				write_port;
+				drive_data = 8'hzz;
+				// change portC lower to output
+				temp_data = 8'b10011010;
+				CWR_write(temp_data);
+				drive_data = 8'hzz;
+				// write to portClower
+				address = 2;
+				drive_data = 8'h11;
+				write_port;
+				drive_data = 8'hzz;
+				// change portA to output
+				temp_data = 8'b10001100;
+				CWR_write(temp_data);
+				drive_data = 8'hzz;
+				// write to portA
+					address = 0;
+					drive_data = 8'hbc;
+					write_port;
+					drive_data = 8'hzz;
+				// change portB to output
+				temp_data = 8'b10011000;
+				CWR_write(temp_data);
+				drive_data = 8'hzz;
+				// write to portB
+				address = 1;
+				drive_data = 8'h67;
+				write_port;
+				drive_data = 8'hzz;
+				// change portC to output
+				temp_data = 8'b10000000;
+				CWR_write(temp_data);
+				drive_data = 8'hzz;
+				// write to portC
+				address = 2;
+				drive_data = 8'h32;
+				write_port;
+				drive_data = 8'hzz;
+									
+		end
+task write_port;
+	begin
+	tb_wrb = 1;
+	tb_rdb = 1;
+	#cycle;
+	tb_wrb = 0;
+	#cycle;
+	tb_wrb = 1;
+	#cycle;
+	end
+endtask
+task read_port;
+		begin
+		tb_wrb = 1;
+		tb_rdb = 1;
+		#cycle;
+		tb_rdb = 0;
+		#cycle;
+		tb_rdb = 1;
+		#cycle;
+		end
+endtask
+task CWR_write;
+		input [7:0] temp_data;
+		begin
+		tb_reset = 0;
+		address = 2'b11;
+		tb_rdb = 1;
+		tb_wrb = 1;
+		#cycle;
+		drive_data = temp_data;
+		tb_wrb = 0;
+		#cycle;
+		tb_wrb = 1;
+		#cycle;
+		end
+endtask
+task task_reset;
+		begin
+		tb_reset = 0;
+		#cycle;
+		tb_reset = 1;
+		#cycle;
+		tb_reset = 0;
+		#cycle;
+		end
+endtask
+PPI A(tb_portA,tb_portB,tb_portC,tb_rdb,tb_a0,tb_a1,tb_wrb,tb_data,tb_reset);
+
+endmodule
