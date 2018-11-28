@@ -1,12 +1,12 @@
 `timescale 1 ns / 1 ps
-module PPI(PA,PB,PC,rdb,a0,a1,wrb,data,reset);
+module PPI(PA,PB,PC,rdb,a0,a1,wrb,data,int_reset);
 		
-		input rdb,wrb,a0,a1,reset; 
+		input rdb,wrb,a0,a1,int_reset; 
 		inout [7:0] PA,PB,PC,data;
 		
 		//Control word register
 		reg [7:0] CWR;
-		
+		assign reset = int_reset | ~CWR[7] ;
 		//address bus
 		
 		wire [1:0] address;
@@ -44,9 +44,9 @@ module PPI(PA,PB,PC,rdb,a0,a1,wrb,data,reset);
 		wire wrb_portA,wrb_portB;
 		wire rdb_portA,rdbportB;
 		
-		always@(posedge reset or posedge wrb)
+		always@(posedge int_reset or posedge wrb )
 		begin
-			if(reset)
+			if(int_reset)
 				begin
 					//during reset CWR is set to mode 0 with portA, Port B and portc as input
 					CWR<= 8'b10011110;
@@ -64,9 +64,9 @@ module PPI(PA,PB,PC,rdb,a0,a1,wrb,data,reset);
 		//for latching in of data when wrb is at falling 
 		//edge for mode 0 port 
 		
-		always @(posedge reset or negedge wrb)
+		always @(posedge int_reset or negedge wrb)
 		begin
-			if(reset)
+			if(int_reset)
 				latch_data[7:0] <= 8'h00;
 			else //falling edge of wrb
 				latch_data[7:0] <= data[7:0];
@@ -77,9 +77,9 @@ module PPI(PA,PB,PC,rdb,a0,a1,wrb,data,reset);
 			input , latch in portA input and portB ,portC
 				
 		*/
-		always @(negedge rdb or posedge reset)
+		always @(negedge rdb or posedge int_reset)
 		begin
-			if(reset)
+			if(int_reset)
 				begin
 					latch_portA[7:0] <= 8'h00;
 					latch_portB[7:0] <= 8'h00;
@@ -97,11 +97,11 @@ module PPI(PA,PB,PC,rdb,a0,a1,wrb,data,reset);
 		// for data inout
 		// out_data is driven when in read mode for mode 0
 		
-		always @(reset or rdb or CWR or portAenable or address or latch_portA or
+		always @(int_reset or rdb or CWR or portAenable or address or latch_portA or
 					latch_portB or portBenable or portCenable or latch_portC)
 		begin
 			
-			if(reset)
+			if(int_reset)
 				out_data[7:0] = 8'hzz;
 				
 			else if(~rdb & (address == 2'b11))
@@ -134,10 +134,15 @@ module PPI(PA,PB,PC,rdb,a0,a1,wrb,data,reset);
 		begin
 			if(reset)
 				begin
+				if(CWR[7]==0)
+					portCenable=8'hff;
+				else
+					begin
 					//during reset ports A,B and C are inputs
 					portAenable=0;
 					portBenable=0;
 					portCenable=8'h00;
+					end
 				end
 			else
 				begin
@@ -168,16 +173,23 @@ module PPI(PA,PB,PC,rdb,a0,a1,wrb,data,reset);
 				end
 			end
 				
-			// writing to portA
+			
 			always @ (reset or wrb or address or CWR or
 							portAenable or portBenable or portCenable  or latch_data)
 				begin
 					if (reset)
 						begin
+							if(~CWR[7] & portCenable==8'hff)
+							begin
+								out_portC [CWR[4:2]] = CWR[0];
+							end
+						else
+						begin
 							out_portA [7:0] = 8'bzzzzzzzz;
 							out_portB [7:0] = 8'bzzzzzzzz;
 							out_portC [7:0] = 8'bzzzzzzzz;
 						end
+					end
 					else if (~wrb & (address == 2'b00) & (CWR[6:5] ==
 								2'b00) & portAenable) // mode 0
 						out_portA [7:0] = latch_data [7:0]; // writing
@@ -230,6 +242,10 @@ module PPI(PA,PB,PC,rdb,a0,a1,wrb,data,reset);
 		initial
 			begin
 				$monitor("portA = %b  portb=%b  port=%b  cupper=%b  clower=%b" , A.PA ,A.PB ,A.PC,A.PC[7:4],A.PC[3:0] );
+				
+				
+				
+				
 				// for reset
 				drive_portA = 8'hzz;
 				drive_portB = 8'hzz;
@@ -241,6 +257,15 @@ module PPI(PA,PB,PC,rdb,a0,a1,wrb,data,reset);
 				tb_reset = 0;
 				#cycle;
 				task_reset;
+				//BSR MODE set portC[1]=1
+				temp_data = 8'b00000101;
+				CWR_write(temp_data);
+				//BSR MODE set portC[1]=0;
+				temp_data = 8'b00000100;
+				CWR_write(temp_data);
+				//BSR MODE set portC[7]=1;
+				temp_data = 8'b00011101;
+				CWR_write(temp_data);
 				// testing for mode 0 with all portA, portB,
 				// portCU, portCL
 				// input
